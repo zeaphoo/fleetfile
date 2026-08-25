@@ -1,0 +1,14 @@
+{
+  "name": "fleetfile",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev:server": "cargo run -p fleetfile-server",
+    "dev:web": "cd web && pnpm dev",
+    "dev:app": "cd app && pnpm start",
+    "build:web": "cd web && pnpm build",
+    "build:server": "cargo build -p fleetfile-server --release",
+    "build:app": "cd app && pnpm build",
+    "build": "pnpm build:web && pnpm build:server && pnpm build:app"
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "fleetfile-app",
+  "version": "0.1.0",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder"
+  },
+  "build": {
+    "appId": "app.fleetfile.desktop",
+    "productName": "FleetFile",
+    "files": ["main.js", "preload.js", "icons/**"],
+    "extraResources": [
+      {
+        "from": "../web/dist",
+        "to": "web"
+      },
+      {
+        "from": "../target/release/fleetfile-server",
+        "to": "bin/fleetfile-server"
+      }
+    ],
+    "linux": { "target": ["AppImage"] },
+    "mac": { "target": ["dmg"] },
+    "win": { "target": ["nsis"] }
+  },
+  "devDependencies": {
+    "electron": "^35.0.0",
+    "electron-builder": "^25.0.0"
+  }
+}

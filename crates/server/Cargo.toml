@@ -1,0 +1,25 @@
+[package]
+name = "fleetfile-server"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "fleetfile-server"
+path = "src/main.rs"
+
+[dependencies]
+fleetfile-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "sync", "time"] }
+axum = { version = "0.8", features = ["ws"] }
+tower-http = { version = "0.6", features = ["fs"] }
+futures-util = "0.3"
+notify = "6"
+portable-pty = "0.9"
+# Offline build pins: the resolver picks newer versions whose .crate files are
+# not present in the local (read-only) registry cache.
+data-encoding = "=2.11.0"
+serial2 = "=0.2.37"
