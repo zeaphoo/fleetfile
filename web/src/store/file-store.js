@@ -35,7 +35,7 @@ const makeTab = () => {
     sortBy: defaults.sortBy,
     sortOrder: "asc",
     groupByDate: false,
-    viewMode: defaults.viewMode, // 'grid' | 'list'
+    viewMode: defaults.viewMode, // 'grid' | 'list' | 'gallery' | 'column' | 'details'
     filter: "",
     page: "explorer", // 'explorer' | 'trash'
   };
@@ -90,6 +90,22 @@ const parentOf = (path) => {
   return trimmed.slice(0, idx);
 };
 
+/**
+ * Smart per-folder defaults (mirrors Xplorer): Downloads / Desktop /
+ * Documents default to date-grouped, newest-first.
+ */
+const smartDefaults = (path) => {
+  const lower = String(path || "").toLowerCase().replace(/\\/g, "/");
+  if (/(downloads|desktop|documents)\/?$/.test(lower)) {
+    return {
+      sort_by: "dateModified",
+      sort_order: "desc",
+      group_by_date: true,
+    };
+  }
+  return null;
+};
+
 export const useFileStore = create((set, get) => {
   const findPane = (s, paneId) =>
     s.panes?.find((p) => p.id === paneId) ||
@@ -138,6 +154,7 @@ export const useFileStore = create((set, get) => {
       set((s) =>
         patchTab(s, tabId, { cwd: path, entries, loading: false, selection: [] }),
       );
+      applyFolderSettings(get().tabById(tabId));
       if (!silent) syncWatchesNow();
     } catch (e) {
       set((s) => patchTab(s, tabId, { error: errMsg(e), loading: false }));
@@ -147,11 +164,39 @@ export const useFileStore = create((set, get) => {
   /** Resolve a tab id, defaulting to the active tab. */
   const resolveTab = (tabId) => (tabId ? findTab(get(), tabId) : get().activeTab());
 
+  /**
+   * Apply per-folder settings (view mode / sort / group) to a tab:
+   * server-saved settings first, then smart defaults (Downloads/Desktop/
+   * Documents → date-grouped, newest first).
+   */
+  const applyFolderSettings = (tab) => {
+    if (!tab || !tab.cwd || tab.page !== "explorer") return;
+    const s = get();
+    const saved = s.folderViews?.[tab.cwd];
+    const smart = smartDefaults(tab.cwd);
+    const patch = {};
+    if (saved?.view_mode) patch.viewMode = saved.view_mode;
+    else if (smart?.view_mode) patch.viewMode = smart.view_mode;
+    if (saved?.sort_by) patch.sortBy = saved.sort_by;
+    else if (smart?.sort_by) patch.sortBy = smart.sort_by;
+    if (saved?.sort_order) patch.sortOrder = saved.sort_order;
+    else if (smart?.sort_order) patch.sortOrder = smart.sort_order;
+    if (saved?.group_by_date != null) patch.groupByDate = !!saved.group_by_date;
+    else if (smart?.group_by_date != null) patch.groupByDate = smart.group_by_date;
+    if (Object.keys(patch).length) {
+      set((st) => patchTab(st, tab.id, patch));
+    }
+  };
+
   return {
     panes: null,
     activePaneId: null,
     drives: [],
     userDirs: null,
+    /** Per-folder view settings loaded from the backend (path -> {view_mode, sort_by, sort_order, group_by_date}). */
+    folderViews: {},
+    /** Folder color labels from the backend (path -> color id). */
+    folderColors: {},
 
     // ── Derived accessors ────────────────────────────────────────────────
     activePane: () => findPane(get()),
@@ -166,7 +211,11 @@ export const useFileStore = create((set, get) => {
     async init() {
       if (get().panes) return; // already booted
       try {
-        const [drives, userDirs] = await Promise.all([api.listDrives(), api.userDirs()]);
+        const [drives, userDirs, prefs] = await Promise.all([
+          api.listDrives(),
+          api.userDirs(),
+          api.getPreferences().catch(() => ({ folder_views: {}, folder_colors: {} })),
+        ]);
         const saved = restoreSession();
         let restore = saved;
         try {
@@ -190,7 +239,14 @@ export const useFileStore = create((set, get) => {
           panes = [p];
           activePaneId = p.id;
         }
-        set({ panes, activePaneId, drives, userDirs });
+        set({
+          panes,
+          activePaneId,
+          drives,
+          userDirs,
+          folderViews: prefs.folder_views || {},
+          folderColors: prefs.folder_colors || {},
+        });
         const home = userDirs.home;
         for (const pane of panes) {
           for (const tab of pane.tabs) {
@@ -224,6 +280,7 @@ export const useFileStore = create((set, get) => {
             filter: "",
           }),
         );
+        applyFolderSettings(get().tabById(tab.id));
         persist();
         syncWatchesNow();
         // record recent-folder visit
@@ -266,6 +323,20 @@ export const useFileStore = create((set, get) => {
     },
 
     // ── Active-tab settings ──────────────────────────────────────────────
+    /** Persist a per-folder setting change to the server (best-effort). */
+    saveFolderSetting(path, patch) {
+      if (!path) return;
+      api.putFolderView(path, patch).catch(() => {
+        /* server may be unreachable; local state still works */
+      });
+      set((s) => ({
+        folderViews: {
+          ...s.folderViews,
+          [path]: { ...(s.folderViews[path] || {}), ...patch },
+        },
+      }));
+    },
+
     setSort(sortBy, tabId) {
       const tab = resolveTab(tabId);
       if (!tab) return;
@@ -275,6 +346,10 @@ export const useFileStore = create((set, get) => {
           : { sortBy, sortOrder: "asc" };
       set((s) => patchTab(s, tab.id, patch));
       persist();
+      get().saveFolderSetting(tab.cwd, {
+        sort_by: patch.sortBy ?? tab.sortBy,
+        sort_order: patch.sortOrder,
+      });
     },
 
     toggleGroupByDate(tabId) {
@@ -282,6 +357,7 @@ export const useFileStore = create((set, get) => {
       if (!tab) return;
       set((s) => patchTab(s, tab.id, { groupByDate: !tab.groupByDate }));
       persist();
+      get().saveFolderSetting(tab.cwd, { group_by_date: !tab.groupByDate });
     },
 
     setFilter(q, tabId) {
@@ -295,7 +371,27 @@ export const useFileStore = create((set, get) => {
       if (!tab) return;
       set((s) => patchTab(s, tab.id, { viewMode: mode }));
       persist();
+      get().saveFolderSetting(tab.cwd, { view_mode: mode });
     },
+
+    // ── Folder colors (persisted server-side) ─────────────────────────
+    setFolderColor(path, colorId) {
+      if (!path) return;
+      api.putFolderColor(path, colorId).catch(() => {});
+      set((s) => ({ folderColors: { ...s.folderColors, [path]: colorId } }));
+    },
+
+    removeFolderColor(path) {
+      if (!path) return;
+      api.deleteFolderColor(path).catch(() => {});
+      set((s) => {
+        const next = { ...s.folderColors };
+        delete next[path];
+        return { folderColors: next };
+      });
+    },
+
+    folderColorOf: (path) => get().folderColors?.[path] || null,
 
     setPage(page, tabId) {
       const tab = resolveTab(tabId);

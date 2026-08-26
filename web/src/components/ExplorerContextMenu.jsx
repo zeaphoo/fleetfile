@@ -4,12 +4,16 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { useClipboardStore } from "@/store/clipboard-store";
 import { usePlacesStore } from "@/store/places-store";
 import { useFileStore } from "@/store/file-store";
-import { Archive, FileSearch, FolderGit2, ScanSearch, Wand2 } from "lucide-react";
+import { FOLDER_COLORS } from "@/lib/folder-colors";
+import { Archive, FileSearch, FolderGit2, Palette, ScanSearch, Wand2 } from "lucide-react";
 
 /**
  * Shared file/folder context menu used by both the grid and the list view.
@@ -22,6 +26,10 @@ export function ExplorerContextMenu({ children, actions, selection = [], onSelec
   const isFavorite = usePlacesStore((s) => s.isFavorite(cwd));
   const count = selection.length;
   const single = count === 1 ? selection[0] : null;
+  const singleFolder = single?.is_dir ? single : null;
+  const currentColor = singleFolder
+    ? useFileStore((s) => s.folderColors[singleFolder.path] || null)
+    : null;
 
   return (
     <ContextMenu>
@@ -48,6 +56,43 @@ export function ExplorerContextMenu({ children, actions, selection = [], onSelec
               <ContextMenuItem onClick={actions.properties}>
                 {t("contextMenu.properties")}
               </ContextMenuItem>
+            )}
+            {singleFolder && (
+              <>
+                <ContextMenuSub>
+                  <ContextMenuSubTrigger>
+                    <Palette className="mr-2 h-4 w-4" />
+                    {t("contextMenu.folderColor")}
+                  </ContextMenuSubTrigger>
+                  <ContextMenuSubContent className="w-44">
+                    {FOLDER_COLORS.map((c) => (
+                      <ContextMenuItem
+                        key={c.id}
+                        onClick={() =>
+                          useFileStore
+                            .getState()
+                            .setFolderColor(singleFolder.path, c.id)
+                        }
+                      >
+                        <span
+                          className="mr-2 h-3 w-3 rounded-full ring-1 ring-border"
+                          style={{ backgroundColor: c.hex }}
+                        />
+                        {t(c.labelKey)}
+                      </ContextMenuItem>
+                    ))}
+                    <ContextMenuSeparator />
+                    <ContextMenuItem
+                      disabled={!currentColor}
+                      onClick={() =>
+                        useFileStore.getState().removeFolderColor(singleFolder.path)
+                      }
+                    >
+                      {t("contextMenu.clearFolderColor")}
+                    </ContextMenuItem>
+                  </ContextMenuSubContent>
+                </ContextMenuSub>
+              </>
             )}
             <ContextMenuSeparator />
             <ContextMenuItem onClick={actions.compress}>

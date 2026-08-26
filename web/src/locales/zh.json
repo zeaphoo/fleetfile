@@ -27,6 +27,11 @@
     "editPath": "双击编辑路径",
     "gridView": "网格视图",
     "listView": "列表视图",
+    "detailsView": "详情视图",
+    "galleryView": "画廊视图",
+    "columnView": "分栏视图",
+    "treeView": "树状视图",
+    "contentView": "内容视图",
     "sort": "排序",
     "byName": "按名称",
     "bySize": "按大小",
@@ -75,7 +80,19 @@
     "hash": "计算哈希…",
     "compareFolders": "对比文件夹…",
     "duplicates": "查找重复文件…",
-    "advancedSelect": "高级选择…"
+    "advancedSelect": "高级选择…",
+    "folderColor": "文件夹颜色",
+    "clearFolderColor": "清除颜色"
+  },
+  "folderColors": {
+    "red": "红色（紧急）",
+    "orange": "橙色（重要）",
+    "yellow": "黄色（进行中）",
+    "green": "绿色（活跃）",
+    "blue": "蓝色（归档）",
+    "purple": "紫色（个人）",
+    "pink": "粉色（审查）",
+    "gray": "灰色（不活跃）"
   },
   "dialog": {
     "newFileTitle": "新建文件",

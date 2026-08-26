@@ -5,4 +5,5 @@ crates/**/target
 web/dist
 web/node_modules
 app/node_modules
-GAP_ANALYSIS.md
+/.links/
+FUNCTIONAL_ANALYSIS.md

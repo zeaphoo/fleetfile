@@ -27,6 +27,11 @@
     "editPath": "Double-click to edit path",
     "gridView": "Grid view",
     "listView": "List view",
+    "detailsView": "Details view",
+    "galleryView": "Gallery view",
+    "columnView": "Column view",
+    "treeView": "Tree view",
+    "contentView": "Content view",
     "sort": "Sort",
     "byName": "By name",
     "bySize": "By size",
@@ -75,7 +80,19 @@
     "hash": "Calculate hash…",
     "compareFolders": "Compare folders…",
     "duplicates": "Find duplicates…",
-    "advancedSelect": "Advanced select…"
+    "advancedSelect": "Advanced select…",
+    "folderColor": "Folder color",
+    "clearFolderColor": "Clear color"
+  },
+  "folderColors": {
+    "red": "Red (urgent)",
+    "orange": "Orange (important)",
+    "yellow": "Yellow (in progress)",
+    "green": "Green (active)",
+    "blue": "Blue (archive)",
+    "purple": "Purple (personal)",
+    "pink": "Pink (review)",
+    "gray": "Gray (inactive)"
   },
   "dialog": {
     "newFileTitle": "New File",

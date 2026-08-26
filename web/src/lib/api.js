@@ -173,6 +173,34 @@ export const api = {
   sevenzStatus: () =>
     request(`${BASE}/7z-status`),
 
+  // ── Preferences (persisted server-side in SQLite) ──────────────────────
+  getPreferences: () =>
+    request(`${BASE}/preferences`),
+
+  putFolderView: (path, patch) =>
+    request(`${BASE}/preferences/folder-view`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path, ...patch }),
+    }),
+
+  deleteFolderView: (path) =>
+    request(`${BASE}/preferences/folder-view?path=${encodeURIComponent(path)}`, {
+      method: "DELETE",
+    }),
+
+  putFolderColor: (path, colorId) =>
+    request(`${BASE}/preferences/folder-color`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path, color_id: colorId }),
+    }),
+
+  deleteFolderColor: (path) =>
+    request(`${BASE}/preferences/folder-color?path=${encodeURIComponent(path)}`, {
+      method: "DELETE",
+    }),
+
   assetUrl: (path) =>
     `${BASE}/asset?path=${encodeURIComponent(path)}`,
 };

@@ -9,6 +9,7 @@ import { useGridKeyboardNav } from "@/hooks/use-grid-nav";
 import { ExplorerContextMenu } from "@/components/ExplorerContextMenu";
 import { getFileIcon, formatSize } from "@/lib/file-utils";
 import { sortFiles, groupFilesByDate } from "@/lib/sort-files";
+import { folderColorHex } from "@/lib/folder-colors";
 import { setDrag, getDrag, clearDrag } from "@/lib/drag-state";
 import { executePaste } from "@/lib/paste";
 import { api, normalizePath } from "@/lib/api";
@@ -29,7 +30,7 @@ function isInsideOrSame(path, dir) {
   return p === d || p.startsWith(d + "/");
 }
 
-function FileGridItem({ entry, index, tab, actions, selected, isCut }) {
+function FileGridItem({ entry, index, tab, actions, selected, isCut, colored }) {
   const { Icon, color } = getFileIcon(entry);
   const isImage = entry.file_type === "image" && !entry.is_dir;
 
@@ -102,7 +103,15 @@ function FileGridItem({ entry, index, tab, actions, selected, isCut }) {
           draggable={false}
         />
       ) : (
-        <Icon className={`h-10 w-10 ${color}`} strokeWidth={1.5} />
+        <span className="relative">
+          <Icon className={`h-10 w-10 ${color}`} strokeWidth={1.5} />
+          {colored && (
+            <span
+              className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full ring-1 ring-background"
+              style={{ backgroundColor: folderColorHex(colored) }}
+            />
+          )}
+        </span>
       )}
       <span className="line-clamp-2 w-full break-all text-xs">{entry.name}</span>
       <span className="text-[10px] text-muted-foreground">
@@ -117,6 +126,7 @@ function GridContent({ tab, actions }) {
   const { selection } = tab;
   const clipFiles = useClipboardStore((s) => s.files);
   const clipOp = useClipboardStore((s) => s.operation);
+  const folderColors = useFileStore((s) => s.folderColors);
 
   const visible = useMemo(
     () => sortFiles(filterEntries(tab.entries, tab.filter), tab.sortBy, tab.sortOrder),
@@ -152,6 +162,7 @@ function GridContent({ tab, actions }) {
           actions={actions}
           selected={isSelected(entry)}
           isCut={isCut(entry)}
+          colored={entry.is_dir ? folderColors[entry.path] || null : null}
         />
       ))}
     </div>

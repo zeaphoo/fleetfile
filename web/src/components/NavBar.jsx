@@ -6,10 +6,15 @@ import {
   ArrowRight,
   ArrowUp,
   CalendarDays,
+  Columns3,
+  FileText,
+  FolderTree,
+  Image,
   LayoutGrid,
   List,
   Moon,
   RefreshCw,
+  Rows2,
   TerminalSquare,
   Search,
   Sun,
@@ -154,24 +159,56 @@ export function NavBar({ onToggleTerminal }) {
 
       {tab.page === "explorer" && (
         <>
-          <Button
-            variant={tab.viewMode === "grid" ? "secondary" : "ghost"}
-            size="icon"
-            className="h-7 w-7 shrink-0"
-            onClick={() => store.setViewMode("grid")}
-            title={t("nav.gridView")}
-          >
-            <LayoutGrid className="h-4 w-4" />
-          </Button>
-          <Button
-            variant={tab.viewMode === "list" ? "secondary" : "ghost"}
-            size="icon"
-            className="h-7 w-7 shrink-0"
-            onClick={() => store.setViewMode("list")}
-            title={t("nav.listView")}
-          >
-            <List className="h-4 w-4" />
-          </Button>
+          <Select value={tab.viewMode} onValueChange={(v) => store.setViewMode(v)}>
+            <SelectTrigger className="h-7 w-28 shrink-0 text-xs">
+              <LayoutGrid className="mr-1 h-3.5 w-3.5" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="grid">
+                <span className="flex items-center gap-2">
+                  <LayoutGrid className="h-3.5 w-3.5" />
+                  {t("nav.gridView")}
+                </span>
+              </SelectItem>
+              <SelectItem value="list">
+                <span className="flex items-center gap-2">
+                  <List className="h-3.5 w-3.5" />
+                  {t("nav.listView")}
+                </span>
+              </SelectItem>
+              <SelectItem value="details">
+                <span className="flex items-center gap-2">
+                  <FileText className="h-3.5 w-3.5" />
+                  {t("nav.detailsView")}
+                </span>
+              </SelectItem>
+              <SelectItem value="gallery">
+                <span className="flex items-center gap-2">
+                  <Image className="h-3.5 w-3.5" />
+                  {t("nav.galleryView")}
+                </span>
+              </SelectItem>
+              <SelectItem value="column">
+                <span className="flex items-center gap-2">
+                  <Columns3 className="h-3.5 w-3.5" />
+                  {t("nav.columnView")}
+                </span>
+              </SelectItem>
+              <SelectItem value="tree">
+                <span className="flex items-center gap-2">
+                  <FolderTree className="h-3.5 w-3.5" />
+                  {t("nav.treeView")}
+                </span>
+              </SelectItem>
+              <SelectItem value="content">
+                <span className="flex items-center gap-2">
+                  <Rows2 className="h-3.5 w-3.5" />
+                  {t("nav.contentView")}
+                </span>
+              </SelectItem>
+            </SelectContent>
+          </Select>
 
           <Select value={tab.sortBy} onValueChange={(v) => store.setSort(v)}>
             <SelectTrigger className="h-7 w-28 shrink-0 text-xs">

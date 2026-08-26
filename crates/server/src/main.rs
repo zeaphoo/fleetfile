@@ -11,7 +11,7 @@ use axum::{
     extract::{Query, State, WebSocketUpgrade, ws::{Message, WebSocket}},
     http::{StatusCode, header},
     response::{IntoResponse, Json},
-    routing::{get, post},
+    routing::{get, post, put},
 };
 use fleetfile_core::{ConflictInfo, DriveInfo, Entry, TextFile, UserDirs};
 use futures_util::{SinkExt, StreamExt};
@@ -21,6 +21,7 @@ use serde_json::json;
 use tower_http::services::{ServeDir, ServeFile};
 
 mod pty;
+mod settings;
 
 // ── Shared state ───────────────────────────────────────────────────────────
 
@@ -37,6 +38,8 @@ struct AppState {
     op_counter: Arc<AtomicU64>,
     /// PTY sessions for the terminal.
     pty_hub: pty::PtyHub,
+    /// Persistent preferences (per-folder view settings, folder colors).
+    prefs: Arc<settings::SettingsStore>,
 }
 
 struct WatchHub {
@@ -626,6 +629,80 @@ async fn sevenz_status() -> Json<serde_json::Value> {
     }))
 }
 
+// ── Preferences (per-folder view settings + folder colors) ────────────────
+
+#[derive(Deserialize)]
+struct FolderViewRequest {
+    path: String,
+    view_mode: Option<String>,
+    sort_by: Option<String>,
+    sort_order: Option<String>,
+    group_by_date: Option<bool>,
+}
+
+#[derive(Deserialize)]
+struct FolderColorRequest {
+    path: String,
+    color_id: String,
+}
+
+async fn get_preferences(State(state): State<AppState>) -> AppResult {
+    let data = state.prefs.snapshot().await.map_err(err)?;
+    Ok(Json(serde_json::to_value(data).unwrap_or_else(|_| json!({}))))
+}
+
+async fn put_folder_view(
+    State(state): State<AppState>,
+    Json(req): Json<FolderViewRequest>,
+) -> AppResult {
+    let merged = state
+        .prefs
+        .update_folder_view(
+            &req.path,
+            &settings::FolderViewSettings {
+                view_mode: req.view_mode,
+                sort_by: req.sort_by,
+                sort_order: req.sort_order,
+                group_by_date: req.group_by_date,
+            },
+        )
+        .await
+        .map_err(err)?;
+    Ok(Json(serde_json::to_value(merged).unwrap_or_else(|_| json!({}))))
+}
+
+async fn delete_folder_view(
+    State(state): State<AppState>,
+    Query(q): Query<PathQuery>,
+) -> AppResult {
+    state.prefs.remove_folder_view(&q.path).await.map_err(err)?;
+    Ok(Json(json!(null)))
+}
+
+async fn put_folder_color(
+    State(state): State<AppState>,
+    Json(req): Json<FolderColorRequest>,
+) -> AppResult {
+    state
+        .prefs
+        .set_folder_color(&req.path, &req.color_id)
+        .await
+        .map_err(err)?;
+    Ok(Json(json!(null)))
+}
+
+async fn delete_folder_color(
+    State(state): State<AppState>,
+    Query(q): Query<PathQuery>,
+) -> AppResult {
+    state
+        .prefs
+        .remove_folder_color(&q.path)
+        .await
+        .map_err(err)?;
+    Ok(Json(json!(null)))
+}
+
 async fn pty_ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<AppState>,
@@ -790,12 +867,16 @@ async fn main() {
         .unwrap_or_else(|_| "web/dist".to_string());
 
     let (events, _) = tokio::sync::broadcast::channel::<String>(512);
+    let prefs = settings::SettingsStore::new(&settings::default_preferences_path())
+        .await
+        .expect("failed to open preferences database");
     let state = AppState {
         events: events.clone(),
         watch: Arc::new(WatchHub::new(events)),
         cancels: Arc::new(Mutex::new(HashSet::new())),
         op_counter: Arc::new(AtomicU64::new(0)),
         pty_hub: pty::PtyHub::default(),
+        prefs: Arc::new(prefs),
     };
 
     let api = Router::new()
@@ -808,6 +889,9 @@ async fn main() {
         .route("/templates", get(list_templates))
         .route("/archive-info", get(archive_info))
         .route("/7z-status", get(sevenz_status))
+        .route("/preferences", get(get_preferences))
+        .route("/preferences/folder-view", put(put_folder_view).delete(delete_folder_view))
+        .route("/preferences/folder-color", put(put_folder_color).delete(delete_folder_color))
         .route("/hash", get(hash_file))
         .route("/office-text", get(office_text))
         .route("/compress", post(compress_files))

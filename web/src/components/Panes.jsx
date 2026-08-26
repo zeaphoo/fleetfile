@@ -3,12 +3,37 @@ import { useFileStore } from "@/store/file-store";
 import { TabBar } from "@/components/TabBar";
 import { FileGrid } from "@/components/FileGrid";
 import { ListView } from "@/components/ListView";
+import { GalleryView } from "@/components/GalleryView";
+import { ColumnView } from "@/components/ColumnView";
+import { DetailsView } from "@/components/DetailsView";
+import { TreeView } from "@/components/TreeView";
+import { ContentView } from "@/components/ContentView";
 import { TrashPage } from "@/components/TrashPage";
 
 function PaneView({ pane }) {
   const store = useFileStore();
   const tab = pane.tabs.find((t) => t.id === pane.activeTabId) || pane.tabs[0];
   if (!tab) return null;
+
+  const renderView = () => {
+    if (tab.page === "trash") return <TrashPage tabId={tab.id} />;
+    switch (tab.viewMode) {
+      case "list":
+        return <ListView tab={tab} />;
+      case "gallery":
+        return <GalleryView tab={tab} />;
+      case "column":
+        return <ColumnView tab={tab} />;
+      case "details":
+        return <DetailsView tab={tab} />;
+      case "tree":
+        return <TreeView tab={tab} />;
+      case "content":
+        return <ContentView tab={tab} />;
+      default:
+        return <FileGrid tab={tab} />;
+    }
+  };
 
   return (
     <div
@@ -17,13 +42,7 @@ function PaneView({ pane }) {
     >
       <TabBar pane={pane} />
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-        {tab.page === "trash" ? (
-          <TrashPage tabId={tab.id} />
-        ) : tab.viewMode === "list" ? (
-          <ListView tab={tab} />
-        ) : (
-          <FileGrid tab={tab} />
-        )}
+        {renderView()}
       </div>
     </div>
   );

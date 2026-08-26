@@ -19,6 +19,10 @@ tower-http = { version = "0.6", features = ["fs"] }
 futures-util = "0.3"
 notify = "6"
 portable-pty = "0.9"
+# Async SQLite via sqlx (runtime-tokio; `sqlite` feature bundles libsqlite3
+# automatically). `migrate` + `macros` enable the embedded migration system
+# (up/down migration files under crates/server/migrations/).
+sqlx = { version = "=0.8.6", default-features = false, features = ["runtime-tokio", "sqlite", "migrate", "macros"] }
 # Offline build pins: the resolver picks newer versions whose .crate files are
 # not present in the local (read-only) registry cache.
 data-encoding = "=2.11.0"
