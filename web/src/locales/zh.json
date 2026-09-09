@@ -219,7 +219,7 @@
     "noPreview": "此文件类型暂不支持快速预览"
   },
   "progress": {
-    "working": "正在复制/移动…",
+    "working": "正在处理…",
     "done": "操作完成",
     "cancel": "取消",
     "cancelled": "已取消",

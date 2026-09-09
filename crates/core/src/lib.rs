@@ -13,7 +13,10 @@ mod thumb;
 
 pub use bulk::{bulk_rename, BulkRenameResult, BulkRenameRules, CounterOpts};
 pub use compare::{find_duplicates, folder_compare, CompareEntry, DuplicateGroup};
-pub use compress::{compress_files, extract_archive, list_archive, ArchiveEntryInfo};
+pub use compress::{
+    compress_files, compress_files_with_progress, extract_archive,
+    extract_archive_with_progress, list_archive, ArchiveEntryInfo,
+};
 pub use drives::{list_drives, DriveInfo};
 pub use hash::{hash_file, HashInfo};
 pub use office::{office_text, OfficeText};
@@ -24,10 +27,15 @@ pub use ops::{
     restore_trash_item_by_original, search_files, write_text_file, ConflictInfo, FileInfo,
     FileProperties, ProgressFn, TextFile, TrashItemInfo,
 };
+pub use rar::{compress_rar_with_progress, extract_rar_with_progress, list_rar};
+pub use sevenz::{compress_7z_with_progress, extract_7z_with_progress, list_7z};
 pub use templates::{list_templates, FileTemplate};
-pub use rar::{compress_rar, find_rars, rars_available};
-pub use sevenz::{find_7z, sevenz_available};
 pub use thumb::make_thumbnail;
+
+/// Owned progress callback: `false` aborts the running operation. Used where a
+/// caller must hand the callback into `'static` storage (the RAR extraction
+/// writer and the WebSocket relay bridge).
+pub type ProgressBox = Box<dyn FnMut(u64, u64) -> bool + Send>;
 
 use serde::Serialize;
 

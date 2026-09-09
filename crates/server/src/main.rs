@@ -223,6 +223,8 @@ struct CompressRequest {
     destination: String,
     format: String,
     level: Option<u32>,
+    /// Optional shared operation id (client batch); omit to let the server generate one.
+    op: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -230,6 +232,7 @@ struct ExtractRequest {
     archive: String,
     destination: String,
     password: Option<String>,
+    op: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -273,21 +276,29 @@ struct ProgressMsg {
     total: u64,
 }
 
-async fn copy_or_move(
-    state: AppState,
-    source: String,
-    destination: String,
-    op: Option<String>,
-    is_move: bool,
-) -> AppResult {
+/// Shared progress callback handed into `'static` storage (the RAR extraction
+/// writer needs it inside `Box<dyn Write>`). Held behind a lock so borrowed
+/// callers (zip/tar/7z) and owning callers (rar) can both drive it.
+type ProgressRc = Arc<Mutex<Option<fleetfile_core::ProgressBox>>>;
+
+/// Run a blocking op (copy/move/compress/extract) that reports per-op byte
+/// progress over the WebSocket event stream and cooperates with cancellation.
+/// `work` receives the shared progress bridge; returning `false` from the
+/// callback aborts the op.
+async fn drive_progress_op<F>(state: AppState, op: Option<String>, work: F) -> AppResult
+where
+    F: FnOnce(&ProgressRc) -> Result<(), fleetfile_core::CoreError> + Send + 'static,
+{
     let op = op.unwrap_or_else(|| next_op_id(&state));
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<ProgressMsg>();
     let events_tx = state.events.clone();
     let cancels = state.cancels.clone();
     let op_id = op.clone();
 
+    let bridge: ProgressRc = Arc::new(Mutex::new(None));
+    let task_bridge = bridge.clone();
     let task = tokio::task::spawn_blocking(move || {
-        let mut cb = |done: u64, total: u64| {
+        let cb = move |done: u64, total: u64| {
             if cancels.lock().unwrap().contains(&op_id) {
                 return false;
             }
@@ -298,11 +309,8 @@ async fn copy_or_move(
             });
             true
         };
-        if is_move {
-            fleetfile_core::move_entry_with_progress(&source, &destination, Some(&mut cb))
-        } else {
-            fleetfile_core::copy_entry_with_progress(&source, &destination, Some(&mut cb))
-        }
+        *task_bridge.lock().unwrap() = Some(Box::new(cb));
+        work(&task_bridge)
     });
 
     let fwd_events = events_tx.clone();
@@ -315,6 +323,9 @@ async fn copy_or_move(
     });
 
     let join_result = task.await.map_err(|e| err(e))?;
+    // Release the boxed callback (it owns the progress `tx`); the forward
+    // task only ends once every sender is dropped.
+    drop(bridge);
     let _ = fwd_task.await;
 
     match join_result {
@@ -337,6 +348,17 @@ async fn copy_or_move(
     }
 }
 
+/// Reborrow the boxed callback as a `&mut Option<&mut ProgressFn>` for the
+/// zip/tar/7z/rars-write style in-process APIs.
+fn with_borrowed<R>(
+    bridge: &ProgressRc,
+    f: impl FnOnce(&mut Option<&mut fleetfile_core::ProgressFn>) -> R,
+) -> R {
+    let mut guard = bridge.lock().unwrap();
+    let mut prog: Option<&mut fleetfile_core::ProgressFn> = guard.as_mut().map(|b| b.as_mut());
+    f(&mut prog)
+}
+
 // ── REST handlers ──────────────────────────────────────────────────────────
 
 async fn read_dir(Query(q): Query<PathQuery>) -> Result<Json<Vec<Entry>>, (StatusCode, Json<ErrorResponse>)> {
@@ -352,11 +374,27 @@ async fn user_dirs() -> Result<Json<UserDirs>, (StatusCode, Json<ErrorResponse>)
 }
 
 async fn copy_entry(State(state): State<AppState>, Json(req): Json<CopyMoveRequest>) -> AppResult {
-    copy_or_move(state, req.source, req.destination, req.op, false).await
+    let source = req.source;
+    let destination = req.destination;
+    let op = req.op;
+    drive_progress_op(state, op, move |bridge| {
+        with_borrowed(bridge, |p| {
+            fleetfile_core::copy_entry_with_progress(&source, &destination, p.take())
+        })
+    })
+    .await
 }
 
 async fn move_entry(State(state): State<AppState>, Json(req): Json<CopyMoveRequest>) -> AppResult {
-    copy_or_move(state, req.source, req.destination, req.op, true).await
+    let source = req.source;
+    let destination = req.destination;
+    let op = req.op;
+    drive_progress_op(state, op, move |bridge| {
+        with_borrowed(bridge, |p| {
+            fleetfile_core::move_entry_with_progress(&source, &destination, p.take())
+        })
+    })
+    .await
 }
 
 async fn rename_entry(Json(req): Json<RenameRequest>) -> AppResult {
@@ -533,31 +571,48 @@ async fn list_templates() -> Result<Json<Vec<fleetfile_core::FileTemplate>>, (St
     Ok(Json(fleetfile_core::list_templates()))
 }
 
-async fn compress_files(Json(req): Json<CompressRequest>) -> AppResult {
+async fn compress_files(State(state): State<AppState>, Json(req): Json<CompressRequest>) -> AppResult {
     let sources = req.sources;
     let destination = req.destination;
     let format = req.format;
     let level = req.level.unwrap_or(6);
-    tokio::task::spawn_blocking(move || {
-        fleetfile_core::compress_files(&sources, &destination, &format, level)
+    let op = req.op;
+    // zip/tar/7z/rar are all implemented in-process with progress + cancel.
+    drive_progress_op(state, op, move |bridge| {
+        with_borrowed(bridge, |p| {
+            fleetfile_core::compress_files_with_progress(&sources, &destination, &format, level, p)
+        })
     })
     .await
-    .map_err(|e| err(e))?
-    .map_err(err)?;
-    Ok(Json(serde_json::json!(null)))
 }
 
-async fn extract_archive(Json(req): Json<ExtractRequest>) -> AppResult {
+async fn extract_archive(State(state): State<AppState>, Json(req): Json<ExtractRequest>) -> AppResult {
     let archive = req.archive;
     let destination = req.destination;
     let password = req.password;
-    tokio::task::spawn_blocking(move || {
-        fleetfile_core::extract_archive(&archive, &destination, password.as_deref())
+    let op = req.op;
+    drive_progress_op(state, op, move |bridge| {
+        // RAR extraction needs the shared boxed callback (its writer API owns
+        // the callback inside `Box<dyn Write>`); everything else borrows.
+        if archive.to_ascii_lowercase().ends_with(".rar") {
+            fleetfile_core::extract_rar_with_progress(
+                &archive,
+                &destination,
+                password.as_deref(),
+                bridge,
+            )
+        } else {
+            with_borrowed(bridge, |p| {
+                fleetfile_core::extract_archive_with_progress(
+                    &archive,
+                    &destination,
+                    password.as_deref(),
+                    p,
+                )
+            })
+        }
     })
     .await
-    .map_err(|e| err(e))?
-    .map_err(err)?;
-    Ok(Json(serde_json::json!(null)))
 }
 
 async fn archive_info(
@@ -619,13 +674,12 @@ async fn duplicates(
 }
 
 async fn sevenz_status() -> Json<serde_json::Value> {
+    // 7z and RAR are implemented in-process (sevenz-rust2 / rars); nothing
+    // external to probe.
     Json(serde_json::json!({
-        "available": fleetfile_core::sevenz_available(),
-        "binary": fleetfile_core::find_7z(),
-        "rars": {
-            "available": fleetfile_core::rars_available(),
-            "binary": fleetfile_core::find_rars(),
-        },
+        "available": true,
+        "binary": null,
+        "rars": { "available": true, "binary": null },
     }))
 }
 

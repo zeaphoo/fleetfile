@@ -9,6 +9,10 @@ async function request(url, options = {}) {
   return res.json();
 }
 
+let opSeq = 1;
+/** Unique operation id for progress-tracked ops (compress/extract/copy batches). */
+export const nextOpId = (prefix = "op-u") => `${prefix}${Date.now()}-${opSeq++}`;
+
 export const api = {
   readDir: (path) =>
     request(`${BASE}/read-dir?path=${encodeURIComponent(path)}`),
@@ -133,18 +137,18 @@ export const api = {
       body: JSON.stringify({ path }),
     }),
 
-  compress: (sources, destination, format, level = 6) =>
+  compress: (sources, destination, format, level = 6, op) =>
     request(`${BASE}/compress`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sources, destination, format, level }),
+      body: JSON.stringify({ sources, destination, format, level, op }),
     }),
 
-  extract: (archive, destination, password) =>
+  extract: (archive, destination, password, op) =>
     request(`${BASE}/extract`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ archive, destination, password }),
+      body: JSON.stringify({ archive, destination, password, op }),
     }),
 
   archiveInfo: (path) =>

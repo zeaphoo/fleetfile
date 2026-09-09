@@ -12,30 +12,30 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useDialogStore } from "@/store/dialog-store";
 import { useFileStore } from "@/store/file-store";
-import { api, errMsg, parentPath } from "@/lib/api";
+import { useProgressStore } from "@/store/progress-store";
+import { api, parentPath, nextOpId } from "@/lib/api";
 
 export function ExtractDialog({ file }) {
   const { t } = useTranslation();
   const close = useDialogStore((s) => s.close);
   const [dest, setDest] = useState(() => parentPath(file.path));
   const [password, setPassword] = useState("");
-  const [error, setError] = useState(null);
-  const [busy, setBusy] = useState(false);
 
   const canPassword = /\.(zip|7z|rar)$/i.test(file.name);
 
+  // zip/tar/7z/rar all extract in-process (progress + cancel): hand off to the
+  // global progress overlay and close the modal immediately.
   const submit = async () => {
     if (!dest.trim()) return;
-    setBusy(true);
-    setError(null);
+
+    const op = nextOpId("op-x");
+    useProgressStore.getState().start(op);
+    close();
     try {
-      await api.extract(file.path, dest.trim(), password || undefined);
+      await api.extract(file.path, dest.trim(), password || undefined, op);
       useFileStore.getState().refresh();
-      close();
-    } catch (e) {
-      setError(errMsg(e));
-    } finally {
-      setBusy(false);
+    } catch {
+      // failure is surfaced via the `op-error` WebSocket event → overlay
     }
   };
 
@@ -66,13 +66,12 @@ export function ExtractDialog({ file }) {
               />
             </div>
           )}
-          {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
         <DialogFooter className="gap-1">
           <Button variant="outline" size="sm" onClick={close}>
             {t("common.cancel")}
           </Button>
-          <Button size="sm" disabled={busy} onClick={submit}>
+          <Button size="sm" onClick={submit}>
             {t("dialog.extract")}
           </Button>
         </DialogFooter>

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Dialog,
@@ -19,7 +19,8 @@ import {
 } from "@/components/ui/select";
 import { useDialogStore } from "@/store/dialog-store";
 import { useFileStore } from "@/store/file-store";
-import { api, errMsg, basename, joinPath } from "@/lib/api";
+import { useProgressStore } from "@/store/progress-store";
+import { api, basename, joinPath, nextOpId } from "@/lib/api";
 
 export function CompressDialog({ files }) {
   const { t } = useTranslation();
@@ -29,43 +30,26 @@ export function CompressDialog({ files }) {
     const base = files.length === 1 ? basename(files[0].path) : "archive";
     return base.replace(/\.(zip|tar|gz|bz2|xz|7z)$/i, "");
   });
-  const [error, setError] = useState(null);
-  const [busy, setBusy] = useState(false);
-  const [sevenz, setSevenz] = useState(true); // assume available until probed
-  const [rars, setRars] = useState(false);
-
-  useEffect(() => {
-    api
-      .sevenzStatus()
-      .then((s) => {
-        setSevenz(!!s.available);
-        setRars(!!s.rars?.available);
-      })
-      .catch(() => setSevenz(false));
-  }, []);
 
   const ext = format === "tar.gz" ? "tar.gz" : format;
 
+  // All formats (zip/tar/7z/rar) run in-process with byte progress + cancel:
+  // hand off to the global progress overlay and close the modal immediately.
   const submit = async () => {
     const tab = useFileStore.getState().activeTab();
     const cwd = tab?.cwd;
     if (!cwd || !name.trim()) return;
-    setBusy(true);
-    setError(null);
+    const dest = joinPath(cwd, `${name.trim()}.${ext}`);
+    const sources = files.map((f) => f.path);
+
+    const op = nextOpId("op-c");
+    useProgressStore.getState().start(op);
+    close();
     try {
-      const dest = joinPath(cwd, `${name.trim()}.${ext}`);
-      await api.compress(
-        files.map((f) => f.path),
-        dest,
-        format,
-        6,
-      );
+      await api.compress(sources, dest, format, 6, op);
       useFileStore.getState().refresh();
-      close();
-    } catch (e) {
-      setError(errMsg(e));
-    } finally {
-      setBusy(false);
+    } catch {
+      // failure is surfaced via the `op-error` WebSocket event → overlay
     }
   };
 
@@ -88,12 +72,8 @@ export function CompressDialog({ files }) {
                 <SelectItem value="tar.gz">TAR.GZ</SelectItem>
                 <SelectItem value="tar.bz2">TAR.BZ2</SelectItem>
                 <SelectItem value="tar.xz">TAR.XZ</SelectItem>
-                <SelectItem value="7z" disabled={!sevenz}>
-                  7Z{sevenz ? "" : t("dialog.archiveHint", { tool: "7-Zip" })}
-                </SelectItem>
-                <SelectItem value="rar" disabled={!rars}>
-                  RAR{rars ? "" : t("dialog.archiveHint", { tool: "rars-cli" })}
-                </SelectItem>
+                <SelectItem value="7z">7Z</SelectItem>
+                <SelectItem value="rar">RAR</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -107,13 +87,12 @@ export function CompressDialog({ files }) {
             />
             <p className="text-[11px] text-muted-foreground">. {ext}</p>
           </div>
-          {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
         <DialogFooter className="gap-1">
           <Button variant="outline" size="sm" onClick={close}>
             {t("common.cancel")}
           </Button>
-          <Button size="sm" disabled={busy} onClick={submit}>
+          <Button size="sm" onClick={submit}>
             {t("dialog.compress")}
           </Button>
         </DialogFooter>

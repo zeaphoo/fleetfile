@@ -219,7 +219,7 @@
     "noPreview": "Quick preview not supported for this file type"
   },
   "progress": {
-    "working": "Copying/moving…",
+    "working": "Working…",
     "done": "Done",
     "cancel": "Cancel",
     "cancelled": "Cancelled",
