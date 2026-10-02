@@ -22,9 +22,9 @@
         "to": "bin/fleetfile-server"
       }
     ],
-    "linux": { "target": ["AppImage"] },
-    "mac": { "target": ["dmg"] },
-    "win": { "target": ["nsis"] }
+    "linux": { "target": ["AppImage"], "icon": "icons/icon.png" },
+    "mac": { "target": ["dmg"], "icon": "icons/icon.icns" },
+    "win": { "target": ["nsis"], "icon": "icons/icon.ico" }
   },
   "devDependencies": {
     "electron": "^35.0.0",
